@@ -1,15 +1,224 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import Topbar from "./../../Components/Topbar/Topbar";
 import Navbar from "./../../Components/Navbar/Navbar";
 import Footer from "./../../Components/Footer/Footer";
 import Breadcrumb from "../../Components/Breadcrumb/Breadcrumb";
 import CourseDetailBox from "../../Components/CourseDetailBox/CourseDetailBox";
 import CommentsTextArea from "../../Components/CommentsTextArea/CommentsTextArea";
-import Accordion from 'react-bootstrap/Accordion';
+import Accordion from "react-bootstrap/Accordion";
+import { useParams, Link } from "react-router-dom";
+import swal from "sweetalert";
 
 import "./CourseInfo.css";
 
 export default function CourseInfo() {
+  const [comments, setComments] = useState([]);
+  const [sessions, setSessions] = useState([]);
+  const [createdAt, setCreatedAt] = useState("");
+  const [updatedAt, setUpdatedAt] = useState("");
+  const [courseDetails, setCourseDetails] = useState({});
+  const [courseTeacher, setCourseTeacher] = useState({});
+  const [courseCategory, setCourseCategory] = useState({});
+  const [relatedCourses, setRelatedCourses] = useState([]);
+
+  const { courseName } = useParams();
+
+  useEffect(() => {
+    getCourseDetails();
+
+    fetch(`http://localhost:4000/v1/courses/related/${courseName}`)
+      .then((res) => res.json())
+      .then((allData) => {
+        console.log(allData);
+        setRelatedCourses(allData);
+      });
+  }, []);
+
+  function getCourseDetails() {
+    const localStorageData = JSON.parse(localStorage.getItem("user"));
+
+    fetch(`http://localhost:4000/v1/courses/${courseName}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${
+          localStorageData === null ? null : localStorageData.token
+        }`,
+      },
+    })
+      .then((res) => res.json())
+      .then((courseInfo) => {
+        setComments(courseInfo.comments);
+        setSessions(courseInfo.sessions);
+        setCourseDetails(courseInfo);
+        setCreatedAt(courseInfo.createdAt);
+        setUpdatedAt(courseInfo.updatedAt);
+        setCourseTeacher(courseInfo.creator);
+        setCourseCategory(courseInfo.categoryID);
+      });
+  }
+
+  const submitComment = (newCommentBody, commentScore) => {
+    const localStorageData = JSON.parse(localStorage.getItem("user"));
+
+    fetch(`http://localhost:4000/v1/comments`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${localStorageData.token}`,
+      },
+      body: JSON.stringify({
+        body: newCommentBody,
+        courseShortName: courseName,
+        score: commentScore,
+      }),
+    })
+      .then((res) => res.json())
+      .then((result) => {
+        swal({
+          title: "کامنت موردنظر با موفقیت ثبت شد",
+          icon: "success",
+          buttons: "تایید",
+        });
+      });
+  };
+
+  const registerInCourse = (course) => {
+    if (course.price === 0) {
+      swal({
+        title: "آیا از ثبت نام در دوره اطمینان دارید؟",
+        icon: "warning",
+        buttons: ["نه", "آره"],
+      }).then((result) => {
+        if (result) {
+          fetch(`http://localhost:4000/v1/courses/${course._id}/register`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${
+                JSON.parse(localStorage.getItem("user")).token
+              }`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              price: course.price,
+            }),
+          }).then((res) => {
+            console.log(res);
+            if (res.ok) {
+              swal({
+                title: "ثبت نام با موفقیت انجام شد",
+                icon: "success",
+                buttons: "اوکی",
+              }).then(() => {
+                getCourseDetails();
+              });
+            }
+          });
+        }
+      });
+    } else {
+      swal({
+        title: "آیا از ثبت نام در دوره اطمینان دارید؟",
+        icon: "warning",
+        buttons: ["نه", "آره"],
+      }).then((result) => {
+        if (result) {
+          swal({
+            title: "در صورت داشتن کد تخفیف وارد کنید:",
+            content: "input",
+            buttons: ["ثبت نام بدون کد تخفیف", "اعمال کد تخفیف"],
+          }).then((code) => {
+            if (code === null) {
+              fetch(`http://localhost:4000/v1/courses/${course._id}/register`, {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${
+                    JSON.parse(localStorage.getItem("user")).token
+                  }`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  price: course.price,
+                }),
+              }).then((res) => {
+                console.log(res);
+                if (res.ok) {
+                  swal({
+                    title: "ثبت نام با موفقیت انجام شد",
+                    icon: "success",
+                    buttons: "اوکی",
+                  }).then(() => {
+                    getCourseDetails();
+                  });
+                }
+              });
+            } else {
+              fetch(`http://localhost:4000/v1/offs/${code}`, {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${
+                    JSON.parse(localStorage.getItem("user")).token
+                  }`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  course: course._id,
+                }),
+              })
+                .then((res) => {
+                  console.log(res);
+
+                  if (res.status == 404) {
+                    swal({
+                      title: "کد تخفیف معتبر نیست",
+                      icon: "error",
+                      buttons: "ای بابا",
+                    });
+                  } else if (res.status == 409) {
+                    swal({
+                      title: "کد تخفیف قبلا استفاده شده :/",
+                      icon: "error",
+                      buttons: "ای بابا",
+                    });
+                  } else {
+                    return res.json();
+                  }
+                })
+                .then((code) => {
+                  fetch(
+                    `http://localhost:4000/v1/courses/${course._id}/register`,
+                    {
+                      method: "POST",
+                      headers: {
+                        Authorization: `Bearer ${
+                          JSON.parse(localStorage.getItem("user")).token
+                        }`,
+                        "Content-Type": "application/json",
+                      },
+                      body: JSON.stringify({
+                        price:
+                          course.price - (course.price * code.percent) / 100,
+                      }),
+                    }
+                  ).then((res) => {
+                    console.log(res);
+                    if (res.ok) {
+                      swal({
+                        title: "ثبت نام با موفقیت انجام شد",
+                        icon: "success",
+                        buttons: "اوکی",
+                      }).then(() => {
+                        getCourseDetails();
+                      });
+                    }
+                  });
+                });
+            }
+          });
+        }
+      });
+    }
+  };
+
   return (
     <>
       <Topbar />
@@ -36,19 +245,10 @@ export default function CourseInfo() {
           <div className="row">
             <div className="col-6">
               <a href="#" className="course-info__link">
-                آموزش برنامه نویسی فرانت اند
+                {courseCategory.title}
               </a>
-              <h1 className="course-info__title">
-                آموزش 20 کتابخانه جاوااسکریپت برای بازار کار
-              </h1>
-              <p className="course-info__text">
-                امروزه کتابخانه‌ها کد نویسی را خیلی آسان و لذت بخش تر کرده اند.
-                به قدری که حتی امروزه هیچ شرکت برنامه نویسی پروژه های خود را با
-                Vanilla Js پیاده سازی نمی کند و همیشه از کتابخانه ها و فریمورک
-                های موجود استفاده می کند. پس شما هم اگه میخواید یک برنامه نویس
-                عالی فرانت اند باشید، باید کتابخانه های کاربردی که در بازار کار
-                استفاده می شوند را به خوبی بلد باشید
-              </p>
+              <h1 className="course-info__title">{courseDetails.name}</h1>
+              <p className="course-info__text">{courseDetails.description}</p>
               <div className="course-info__social-media">
                 <a href="#" className="course-info__social-media-item">
                   <i className="fab fa-telegram-plane course-info__icon"></i>
@@ -84,32 +284,21 @@ export default function CourseInfo() {
                     <CourseDetailBox
                       icon="graduation-cap"
                       title="وضعیت دوره:"
-                      text="به اتمام رسیده"
+                      text={
+                        courseDetails.isComplete === 1
+                          ? "به اتمام رسیده"
+                          : "در حال برگزاری"
+                      }
                     />
                     <CourseDetailBox
                       icon="clock"
-                      title=" مدت زمان دوره:"
-                      text="19 ساعت"
+                      title="زمان برگزاری"
+                      text={createdAt.slice(0, 10)}
                     />
                     <CourseDetailBox
                       icon="calendar-alt"
                       title="آخرین بروزرسانی:"
-                      text="1401/03/02"
-                    />
-                    <CourseDetailBox
-                      icon="graduation-cap"
-                      title="وضعیت دوره:"
-                      text="به اتمام رسیده"
-                    />
-                    <CourseDetailBox
-                      icon="clock"
-                      title=" مدت زمان دوره:"
-                      text="19 ساعت"
-                    />
-                    <CourseDetailBox
-                      icon="calendar-alt"
-                      title="آخرین بروزرسانی:"
-                      text="1401/03/02"
+                      text={updatedAt.slice(0, 10)}
                     />
                   </div>
                 </div>
@@ -217,74 +406,54 @@ export default function CourseInfo() {
                   <div className="introduction__topic">
                     <Accordion defaultActiveKey="0">
                       <Accordion.Item eventKey="0" className="accordion">
-                        <Accordion.Header>معرفی دوره</Accordion.Header>
-                        <Accordion.Body className="introduction__accordion-body">
-                          <div className="introduction__accordion-right">
-                            <span className="introduction__accordion-count">1</span>
-                            <i className="fab fa-youtube introduction__accordion-icon"></i>
-                            <a href="#" className="introduction__accordion-link">
-                              معرفی دوره + چرا یادگیری کتابخانه ها ضروری است؟
-                            </a>
-                          </div>
-                          <div className="introduction__accordion-left">
-                            <span className="introduction__accordion-time">
-                              18:34
-                            </span>
-                          </div>
-                        </Accordion.Body>
-                      </Accordion.Item>
-                      <Accordion.Item eventKey="1" className="accordion">
-                        <Accordion.Header>
-                          اصطلاحات مقدماتی مربوط به بک‌اند
-                        </Accordion.Header>
-                        <Accordion.Body className="introduction__accordion-body">
-                            <div className="introduction__accordion-right">
-                              <span className="introduction__accordion-count">
-                                1
-                              </span>
-                              <i className="fab fa-youtube introduction__accordion-icon"></i>
-                              <a href="#" className="introduction__accordion-link">
-                                معرفی دوره + چرا یادگیری کتابخانه ها ضروری است؟
-                              </a>
-                            </div>
-                            <div className="introduction__accordion-left">
-                              <span className="introduction__accordion-time">
-                                18:34
-                              </span>
-                            </div>
-                        </Accordion.Body>
-                        <Accordion.Body className="introduction__accordion-body">
-                            <div className="introduction__accordion-right">
-                              <span className="introduction__accordion-count">
-                                1
-                              </span>
-                              <i className="fab fa-youtube introduction__accordion-icon"></i>
-                              <a href="#" className="introduction__accordion-link">
-                                جلسه دوم این فصل
-                              </a>
-                            </div>
-                            <div className="introduction__accordion-left">
-                              <span className="introduction__accordion-time">
-                                18:34
-                              </span>
-                            </div>
-                        </Accordion.Body>
-                        <Accordion.Body className="introduction__accordion-body">
-                            <div className="introduction__accordion-right">
-                              <span className="introduction__accordion-count">
-                                1
-                              </span>
-                              <i className="fab fa-youtube introduction__accordion-icon"></i>
-                              <a href="#" className="introduction__accordion-link">
-                                جلسه سوم این فصل
-                              </a>
-                            </div>
-                            <div className="introduction__accordion-left">
-                              <span className="introduction__accordion-time">
-                                18:34
-                              </span>
-                            </div>
-                        </Accordion.Body>
+                        <Accordion.Header>جلسات دوره</Accordion.Header>
+                        {sessions.map((session, index) => (
+                          <Accordion.Body
+                            key={session._id}
+                            className="introduction__accordion-body"
+                          >
+                            {session.free === 1 ||
+                            courseDetails.isUserRegisteredToThisCourse ? (
+                              <>
+                                <div className="introduction__accordion-right">
+                                  <span className="introduction__accordion-count">
+                                    {index + 1}
+                                  </span>
+                                  <i className="fab fa-youtube introduction__accordion-icon"></i>
+                                  <Link
+                                    to={`/${courseName}/${session._id}`}
+                                    className="introduction__accordion-link"
+                                  >
+                                    {session.title}
+                                  </Link>
+                                </div>
+                                <div className="introduction__accordion-left">
+                                  <span className="introduction__accordion-time">
+                                    {session.time}
+                                  </span>
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                <div className="introduction__accordion-right">
+                                  <span className="introduction__accordion-count">
+                                    {index + 1}
+                                  </span>
+                                  <i className="fab fa-youtube introduction__accordion-icon"></i>
+                                  <span className="introduction__accordion-link">
+                                    {session.title}
+                                  </span>
+                                </div>
+                                <div className="introduction__accordion-left">
+                                  <span className="introduction__accordion-time">
+                                    {session.time}
+                                  </span>
+                                  <i className="fa fa-lock"></i>
+                                </div>
+                              </>
+                            )}
+                          </Accordion.Body>
+                        ))}
                       </Accordion.Item>
                     </Accordion>
                   </div>
@@ -303,7 +472,8 @@ export default function CourseInfo() {
                       />
                       <div className="techer-details__header-titles">
                         <a href="#" className="techer-details__header-link">
-                          محمدامین سعیدی راد
+                          {/* محمدامین سعیدی راد */}
+                          {courseTeacher.name}
                         </a>
                         <span className="techer-details__header-skill">
                           Front End & Back End Developer
@@ -324,7 +494,10 @@ export default function CourseInfo() {
 
                 {/* Finish Teacher Details */}
 
-                <CommentsTextArea />
+                <CommentsTextArea
+                  comments={comments}
+                  submitComment={submitComment}
+                />
               </div>
             </div>
 
@@ -332,10 +505,19 @@ export default function CourseInfo() {
               <div className="courses-info">
                 <div className="course-info">
                   <div className="course-info__register">
-                    <span className="course-info__register-title">
-                      <i className="fas fa-graduation-cap course-info__register-icon"></i>
-                      دانشجوی دوره هستید
-                    </span>
+                    {courseDetails.isUserRegisteredToThisCourse === true ? (
+                      <span className="course-info__register-title">
+                        <i className="fas fa-graduation-cap course-info__register-icon"></i>
+                        دانشجوی دوره هستید
+                      </span>
+                    ) : (
+                      <span
+                        className="course-info__register-title"
+                        onClick={() => registerInCourse(courseDetails)}
+                      >
+                        ثبت نام در دوره
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div className="course-info">
@@ -346,7 +528,9 @@ export default function CourseInfo() {
                         <span className="course-info__total-sale-text">
                           تعداد دانشجو :
                         </span>
-                        <span className="course-info__total-sale-number">178</span>
+                        <span className="course-info__total-sale-number">
+                          {courseDetails.courseStudentsCount}
+                        </span>
                       </div>
                     </div>
                     <div className="course-info__bottom">
@@ -368,14 +552,18 @@ export default function CourseInfo() {
                 <div className="course-info">
                   <div className="course-info__header-short-url">
                     <i className="fas fa-link course-info__short-url-icon"></i>
-                    <span className="course-info__short-url-text">لینک کوتاه</span>
+                    <span className="course-info__short-url-text">
+                      لینک کوتاه
+                    </span>
                   </div>
                   <span className="course-info__short-url">
                     https://sabzlearn.ir/?p=117472
                   </span>
                 </div>
                 <div className="course-info">
-                  <span className="course-info__topic-title">سرفصل های دوره</span>
+                  <span className="course-info__topic-title">
+                    سرفصل های دوره
+                  </span>
                   <span className="course-info__topic-text">
                     برای مشاهده و یا دانلود دوره روی کلمه
                     <a href="#" style={{ color: "blue", fontWeight: "bold" }}>
@@ -384,59 +572,32 @@ export default function CourseInfo() {
                     کلیک کنید
                   </span>
                 </div>
-                <div className="course-info">
-                  <span className="course-info__courses-title">دوره های مرتبط</span>
-                  <ul className="course-info__courses-list">
-                    <li className="course-info__courses-list-item">
-                      <a href="#" className="course-info__courses-link">
-                        <img
-                          src="/images/courses/js_project.png"
-                          alt="Course Cover"
-                          className="course-info__courses-img"
-                        />
-                        <span className="course-info__courses-text">
-                          پروژه های تخصصی با جاوا اسکریپت
-                        </span>
-                      </a>
-                    </li>
-                    <li className="course-info__courses-list-item">
-                      <a href="#" className="course-info__courses-link">
-                        <img
-                          src="/images/courses/fareelancer.png"
-                          alt="Course Cover"
-                          className="course-info__courses-img"
-                        />
-                        <span className="course-info__courses-text">
-                          تعیین قیمت پروژه های فریلنسری
-                        </span>
-                      </a>
-                    </li>
-                    <li className="course-info__courses-list-item">
-                      <a href="#" className="course-info__courses-link">
-                        <img
-                          src="/images/courses/nodejs.png"
-                          alt="Course Cover"
-                          className="course-info__courses-img"
-                        />
-                        <span className="course-info__courses-text">
-                          دوره Api نویسی
-                        </span>
-                      </a>
-                    </li>
-                    <li className="course-info__courses-list-item">
-                      <a href="#" className="course-info__courses-link">
-                        <img
-                          src="/images/courses/jango.png"
-                          alt="Course Cover"
-                          className="course-info__courses-img"
-                        />
-                        <span className="course-info__courses-text">
-                          متخصص جنگو
-                        </span>
-                      </a>
-                    </li>
-                  </ul>
-                </div>
+                {relatedCourses.length !== 0 && (
+                  <div className="course-info">
+                    <span className="course-info__courses-title">
+                      دوره های مرتبط
+                    </span>
+                    <ul className="course-info__courses-list">
+                      {relatedCourses.map((course) => (
+                        <li className="course-info__courses-list-item">
+                          <Link
+                            to={`/course-info/${course.shortName}`}
+                            className="course-info__courses-link"
+                          >
+                            <img
+                              src={`http://localhost:4000/courses/covers/${course.cover}`}
+                              alt="Course Cover"
+                              className="course-info__courses-img"
+                            />
+                            <span className="course-info__courses-text">
+                              {course.name}
+                            </span>
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
             </div>
           </div>

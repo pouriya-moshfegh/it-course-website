@@ -1,15 +1,15 @@
-import React, { useReducer } from "react";
+import React, { useEffect, useReducer } from "react";
+import validator from "../../validators/validator";
 
 import "./Input.css";
 
 const inputReducer = (state, action) => {
-
   switch (action.type) {
     case "CHANGE": {
       return {
         ...state,
         value: action.value,
-        isValid: action.isValid,
+        isValid: validator(action.value, action.validations),
       };
     }
     default: {
@@ -19,19 +19,23 @@ const inputReducer = (state, action) => {
 };
 
 export default function Input(props) {
-
-  console.log(props.validations);
-
   const [mainInput, dispatch] = useReducer(inputReducer, {
     value: "",
     isValid: false,
   });
 
+  const { value, isValid } = mainInput;
+  const { id, onInputHandler } = props;
+
+  useEffect(() => {
+    onInputHandler(id, value, isValid);
+  }, [value]);
+
   const onChangeHandler = (event) => {
-    console.log(event.target.value);
     dispatch({
       type: "CHANGE",
       value: event.target.value,
+      validations: props.validations,
       isValid: true,
     });
   };
@@ -58,5 +62,5 @@ export default function Input(props) {
       />
     );
 
-  return <div>{element}</div>;
+  return <div style={{width: '100%'}}>{element}</div>;
 }
